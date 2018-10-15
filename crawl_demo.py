@@ -1,14 +1,23 @@
-from selenium import webdriver
 from bs4 import BeautifulSoup
-import smtplib
-from email.mime.text import MIMEText
 from config import *
+from email.mime.text import MIMEText
+import pymysql
+from selenium import webdriver
+import smtplib
 
+# Init DB Connection
+conn = pymysql.connect(host='localhost', user='root', password=get_gmail_pw(), db='bb', charset='utf8')
+curs = conn.cursor()
+
+
+# Init Chrome Webdriver
 driver = webdriver.Chrome(get_chrome_driver())
 driver.implicitly_wait(3)
 
 driver.get(get_target_url())
 
+
+# LogIn to target url
 driver.find_element_by_name('id').send_keys(get_blackboard_id())
 driver.find_element_by_name('pw').send_keys(get_blackboard_pw())
 driver.find_element_by_xpath('//*[@id="entry-login"]').click()
@@ -22,11 +31,32 @@ subject_url_3 = 'https://kulms.korea.ac.kr/webapps/blackboard/content/listConten
 subject_url_4 = '&content_id=_'
 subject_url_5 = '&mode=reset'
 
+
+# Init Mail Service
 smtp = smtplib.SMTP('smtp.gmail.com', 587)
 smtp.ehlo()
 smtp.starttls()
 smtp.login(get_gmail_id(), get_gmail_pw())
 
+
+# Get Existing Datas from DB
+announcements_db = []
+assignments_db = []
+
+sql = "select * from announcement"
+curs.execute(sql)
+rows = curs.fetchall()
+for a in rows:
+    announcements_db.append(a[0])
+
+sql = "select * from assignment"
+curs.execute(sql)
+rows = curs.fetchall()
+for a in rows:
+    assignments_db.append(a[0])
+
+
+# Crawls DATA and check works
 for subject in subject_list:
     # Get Announcements
     subject_announcement_url = subject_url_1 + subject[0] + subject_url_2
@@ -40,11 +70,17 @@ for subject in subject_list:
     for ann in announcements:
         print(ann.attrs['id'])
         print('---------------')
-        break
-        # msg = MIMEText(ann.text)
-        # msg['Subject'] = 'Announcement for ' + subject[0]
-        # msg['To'] = get_user_mail()
-        # smtp.sendmail(get_gmail_id(), get_user_mail, msg.as_string())
+
+        if ann.attrs['id'] not in announcements_db:
+            sql_ann = 'insert into announcement values(\"' + ann.attrs['id'] + '\")'
+            print(sql_ann)
+            curs.execute(sql_ann)
+            conn.commit()
+
+            msg = MIMEText(ann.text)
+            msg['Subject'] = 'Announcement for ' + subject[0]
+            msg['To'] = get_user_mail()
+            smtp.sendmail(get_gmail_id(), get_user_mail(), msg.as_string())
 
     # Get Assignments if exists
     if subject[1] != 0:
@@ -57,12 +93,15 @@ for subject in subject_list:
         # Check DB & Send Mail of Assignments
         for ass in assignments:
             print(ass.attrs['id'])
-            break
-            # msg = MIMEText(ass.text)
-            # msg['Subject'] = 'Assignment for ' + subject[0]
-            # msg['To'] = get_user_mail()
-            # smtp.sendmail(get_gmail_id(), get_user_mail(), msg.as_string())
 
-    break
+            if ass.attrs['id'] not in assignments_db:
+                sql_ass = "insert into assignment values(\"" + ass.attrs['id'] + '\")'
+                curs.execute(sql_ass)
+                conn.commit()
+
+                msg = MIMEText(ass.text)
+                msg['Subject'] = 'Assignment for ' + subject[0]
+                msg['To'] = get_user_mail()
+                smtp.sendmail(get_gmail_id(), get_user_mail(), msg.as_string())
 
 smtp.quit()

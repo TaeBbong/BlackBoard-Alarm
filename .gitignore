@@ -3,3 +3,6 @@ config.py
 
 # venv
 venv/
+
+# chromedriver
+chromedriver.exe
